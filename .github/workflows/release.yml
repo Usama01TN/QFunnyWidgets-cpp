@@ -1,11 +1,14 @@
 # Build, test, package and release QFunnyWidgets (C++) with Qt 5 and Qt 6 on every desktop OS and architecture.
 #
-#   push / pull request to main               -> build + smoke test + packages (downloadable as run artifacts)
-#   git tag v1.0.0 && git push origin v1.0.0  -> the same, then a GitHub release with every package attached
-#   Actions tab > Release > Run workflow      -> the same as a push (a dry run: no release is created)
+#   git tag v1.0.0 && git push origin v1.0.0   -> build, then a versioned GitHub release with every package attached
+#   push to main / master                      -> build, then refresh the rolling "nightly" pre-release
+#   pull request                               -> build + smoke tests + packages (run artifacts only)
+#   Actions tab > Release > Run workflow       -> choose "publish": none (dry run), nightly, or release
+#                                                 (release creates the tag v<CMake version> on the chosen branch)
 #
-# The tag must match project(QFunnyWidgets VERSION ...) in CMakeLists.txt. Tags with a suffix (v1.1.0-rc1) are
-# published as pre-releases.
+# A version tag must match project(QFunnyWidgets VERSION ...) in CMakeLists.txt; tags with a suffix (v1.1.0-rc1)
+# are published as pre-releases. A manual release refuses to run if its tag already exists, and the nightly is a
+# pre-release that is never marked "Latest".
 #
 # Build matrix (every job runs natively on a GitHub-hosted runner of its architecture, no emulation):
 #
@@ -36,14 +39,24 @@ on:
   pull_request:
     paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish after a successful build"
+        type: choice
+        options:
+          - none      # dry run: packages only as run artifacts
+          - nightly   # replace the rolling "nightly" pre-release with this commit
+          - release   # versioned release v<CMake version>, tag created on the chosen branch
+        default: none
 
 permissions:
   contents: read
 
 concurrency:
   group: release-${{ github.ref }}
-  # Never cancel a release; superseded branch / PR builds can go.
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  # Only superseded pull request builds are cancelled. Pushes to main queue instead, so a newer push can never
+  # interrupt an older run while it replaces the nightly release (the newest queued run still wins).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   QT6_VERSION: "6.10.3"   # >= 6.9: older Qt 6 links -framework AGL, which the macOS 26 SDK no longer has
@@ -57,29 +70,57 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read the project version (and check the tag on releases)
+      - name: Decide the version and what to publish
         id: version
+        env:
+          PUBLISH_INPUT: ${{ inputs.publish }}     # empty unless started from the Actions tab
         run: |
           VERSION=$(sed -nE 's/^project\(QFunnyWidgets VERSION ([0-9][0-9.]*).*/\1/p' CMakeLists.txt)
           if [ -z "$VERSION" ]; then
             echo "::error::Could not read the version from CMakeLists.txt"
             exit 1
           fi
+          DEV="$VERSION-dev.${GITHUB_SHA::7}"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            if [ "${TAG%%-*}" != "$VERSION" ]; then
-              echo "::error::Tag $GITHUB_REF_NAME does not match the CMake project version ($VERSION)"
+            # Pushed version tag -> versioned release.
+            TAG="$GITHUB_REF_NAME"
+            BASE="${TAG#v}"
+            BASE="${BASE%%-*}"                   # v1.1.0-rc1 -> 1.1.0
+            if [ "$BASE" != "$VERSION" ]; then
+              echo "::error::Tag $TAG does not match the CMake project version ($VERSION)"
               exit 1
             fi
-            VERSION="$TAG"                       # keep a pre-release suffix such as -rc1 in file names
+            PUBLISH=release
+            VERSION="${TAG#v}"                   # keep a pre-release suffix such as -rc1 in file names
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH_INPUT" = "release" ]; then
+            # Manual release: the workflow creates the tag; never overwrite an existing one.
+            TAG="v$VERSION"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+              echo "::error::Tag $TAG already exists. Bump the version in CMakeLists.txt, or re-run the workflow of that tag."
+              exit 1
+            fi
+            PUBLISH=release
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] || { [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH_INPUT" = "nightly" ]; }; then
+            # Push to main/master (the only branches this workflow runs on) or manual nightly.
+            TAG=nightly
+            PUBLISH=nightly
+            VERSION="$DEV"
           else
-            VERSION="$VERSION-dev.${GITHUB_SHA::7}"
+            TAG=""
+            PUBLISH=none
+            VERSION="$DEV"
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building version $VERSION"
+          {
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION; publish: $PUBLISH${TAG:+ ($TAG)}"
 
   build:
     name: ${{ matrix.name }}
@@ -316,13 +357,18 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: GitHub release
+    name: Publish (${{ needs.version.outputs.publish }})
     needs: [version, build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: needs.version.outputs.publish != 'none'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    concurrency:
+      group: publish-${{ needs.version.outputs.tag }}
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download every package
         uses: actions/download-artifact@v4
         with:
@@ -342,20 +388,12 @@ jobs:
             exit 1
           fi
 
-      - name: Create the release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: QFunnyWidgets ${{ needs.version.outputs.version }}
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          generate_release_notes: true
-          body: |
-            **Packages** (one pair per OS / architecture / Qt version):
-            - `*-gallery.*`: the self-contained widget gallery (AppImage / zip / dmg); no Qt installation needed.
-            - `*-sdk.*`: everything to build against QFunnyWidgets with that Qt: headers, the **static** library
-              (`QFunnyWidgetsStatic`), the **shared** library (`QFunnyWidgets`: `.so` / `.dylib` / `.dll` + import
-              library), the CMake package (`find_package(QFunnyWidgets)` -> `QFunnyWidgets::Static`,
-              `QFunnyWidgets::Shared`), the Qt Designer plugin and `funnywidgets-designer`.
-
-            `SHA256SUMS.txt` lists the checksums. See the README for which Qt and compiler each SDK expects.
-          fail_on_unmatched_files: true
-          files: dist/*
+      - name: Publish ${{ needs.version.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISH: ${{ needs.version.outputs.publish }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          COMMIT: ${{ github.sha }}
+        run: bash .github/scripts/publish-release.sh
