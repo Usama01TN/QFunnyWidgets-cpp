@@ -5,6 +5,7 @@
  */
 #include "deadline.h"
 
+#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPainterPath>
@@ -277,8 +278,7 @@ void DeadlineCountdownWidget::paintEvent(QPaintEvent *)
     const qreal y = cal.top();
     p.drawText(QRectF(x0, y, tw, 18), Qt::AlignLeft | Qt::AlignVCenter, m_title.toUpper());
     // Big digits.
-    QFont df(QStringLiteral("Monospace"));
-    df.setStyleHint(QFont::TypeWriter);
+    QFont df = QFontDatabase::systemFont(QFontDatabase::FixedFont); // portable "Monospace"
     df.setBold(true);
     df.setPointSizeF(clamp(cal.height() * 0.24, 14.0, 34.0));
     p.setFont(df);

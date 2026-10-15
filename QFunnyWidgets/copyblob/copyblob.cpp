@@ -5,6 +5,7 @@
  */
 #include "copyblob.h"
 
+#include <QFontDatabase>
 #include <QApplication>
 #include <QClipboard>
 #include <QCursor>
@@ -238,8 +239,7 @@ void CopyBlobButtonWidget::paintEvent(QPaintEvent *)
     p.setPen(QPen(QColor(255, 255, 255, 30), 1.0));
     p.drawLine(QPointF(blobArea.left(), rect.top() + 8), QPointF(blobArea.left(), rect.bottom() - 8));
     // Text.
-    QFont f(QStringLiteral("Monospace"));
-    f.setStyleHint(QFont::TypeWriter);
+    QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont); // portable "Monospace"
     f.setPointSizeF(clamp(rect.height() * 0.26, 9.0, 12.0));
     p.setFont(f);
     const QFontMetricsF fm(f);

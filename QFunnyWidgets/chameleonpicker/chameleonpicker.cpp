@@ -5,6 +5,7 @@
  */
 #include "chameleonpicker.h"
 
+#include <QFontDatabase>
 #include <QBrush>
 #include <QKeyEvent>
 #include <QLinearGradient>
@@ -397,8 +398,7 @@ void ChameleonColorPickerWidget::paintEvent(QPaintEvent *)
     }
     // Hex label.
     if (m_showHex) {
-        QFont f(QStringLiteral("Monospace"));
-        f.setStyleHint(QFont::TypeWriter);
+        QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont); // portable "Monospace"
         f.setBold(true);
         f.setPointSizeF(10.0);
         p.setFont(f);

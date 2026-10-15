@@ -2,7 +2,9 @@
  * Headless smoke test (the counterpart of tests/smoke.py): opens, resizes and closes every widget demo, then checks
  * the Qt Designer plugin metadata (factory, icon, domXml, include file) for every Designer widget.
  *
- * Any Qt critical/fatal message, or a warning that is not known offscreen-platform noise, counts as a failure.
+ * Every Qt warning, critical or fatal message counts as a failure of the demo that produced it, except messages
+ * about the test machine itself (fonts, platform plugin, runtime directories): those are environment notes, listed
+ * separately so they stay visible. See isEnvironmentMessage(); selfCheck() guards that classification.
  */
 #include "funnywidgetsinfo.h"
 
@@ -17,6 +19,7 @@
 #include <QWidget>
 #include <QXmlStreamReader>
 #include <functional>
+#include <utility>
 
 #include "antbreadcrumb/mainwindow.h"
 #include "autosave/mainwindow.h"
@@ -56,19 +59,92 @@
 
 namespace {
 
-QStringList ERRORS;
+QStringList ERRORS;       // problems: each one fails the demo that was running
+QStringList NOTES;        // environment messages, reported but not failures
 
-void messageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+/**
+ * True for messages about the machine rather than about the widgets: Qt's platform-plugin and font-database
+ * logging categories, plus a few well-known uncategorized messages from the same subsystems (Qt 5 logs most of them
+ * without a category). Anything else (QPainter misuse, failed connections, layout or font-size warnings, ...) is a
+ * real problem.
+ */
+bool isEnvironmentMessage(const char *category, const QString &msg)
 {
-    // Platform noise of the offscreen plugin, not problems of the widgets.
-    static const char *const NOISE[] = {"propagateSizeHints", "XDG_RUNTIME_DIR", "QStandardPaths"};
+    const QLatin1String cat(category ? category : "");
+    if (cat.startsWith(QLatin1String("qt.qpa.")) || cat.startsWith(QLatin1String("qt.text.font")))
+        return true;
+    static const char *const KNOWN[] = {
+        "QFontDatabase: Cannot find font directory",  // offscreen platform without bundled fonts (Windows)
+        "Note that Qt no longer ships fonts",         // second line of the message above
+        "Populating font family aliases",             // a requested family (e.g. "Sans Serif") missing (macOS)
+        "propagateSizeHints",                         // offscreen platform: unsupported window hint
+        "XDG_RUNTIME_DIR",                            // headless Linux session
+        "QStandardPaths:",                            // same, older wording
+    };
+    for (const char *k : KNOWN) {
+        if (msg.contains(QLatin1String(k)))
+            return true;
+    }
+    return false;
+}
+
+void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
     if (type == QtDebugMsg || type == QtInfoMsg)
         return;
-    for (const char *n : NOISE) {
-        if (msg.contains(QLatin1String(n)))
-            return;
+    if (isEnvironmentMessage(context.category, msg)) {
+        if (!NOTES.contains(msg))
+            NOTES.append(msg);
+        return;
     }
     ERRORS.append(msg);
+}
+
+/** The classifier must keep accepting the environment messages seen on CI and keep rejecting real problems. */
+QStringList selfCheck()
+{
+    QStringList problems;
+    const char *const environment[][2] = {
+        {"default", "QFontDatabase: Cannot find font directory D:/a/x/Qt/6.10.3/msvc2022_64/lib/fonts.\n"
+                    "Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for "
+                    "example) or switch to fontconfig."},
+        {"default", "Populating font family aliases took 132 ms. Replace uses of missing font family "
+                    "\"Sans Serif\" with one that exists to avoid this cost."},
+        {"qt.text.font.db", "Populating font family aliases took 94 ms. Replace uses of missing font family "
+                            "\"Monospace\" with one that exists to avoid this cost."},
+        {"qt.qpa.fonts", "Unable to enumerate family ' \"Foo\" '"},
+        {"default", "QStandardPaths: XDG_RUNTIME_DIR not set, defaulting to '/tmp/runtime-root'"},
+    };
+    const char *const problemsToCatch[][2] = {
+        {"default", "QPainter::begin: Paint device returned engine == 0, type: 1"},
+        {"default", "QObject::connect: No such signal JellySwitchWidget::toggled(int)"},
+        {"default", "QFont::setPointSizeF: Point size <= 0 (-1.000000), must be greater than 0"},
+        {"default", "QLayout: Attempting to add QLayout \"\" to QWidget \"\", which already has a layout"},
+        {"qt.widgets.painting", "Something went wrong while painting"},
+    };
+    for (const auto &m : environment) {
+        if (!isEnvironmentMessage(m[0], QString::fromLatin1(m[1])))
+            problems.append(QStringLiteral("self-check: environment message treated as a failure: %1")
+                                .arg(QString::fromLatin1(m[1])));
+    }
+    for (const auto &m : problemsToCatch) {
+        if (isEnvironmentMessage(m[0], QString::fromLatin1(m[1])))
+            problems.append(QStringLiteral("self-check: real problem ignored: %1").arg(QString::fromLatin1(m[1])));
+    }
+    return problems;
+}
+
+/** The offscreen platform has no fonts on Windows unless pointed at some (Qt stopped shipping them). */
+void provideFontsForOffscreen()
+{
+#ifdef Q_OS_WIN
+    if (qEnvironmentVariableIsEmpty("QT_QPA_FONTDIR")) {
+        const QString fonts = QDir(qEnvironmentVariable("WINDIR", QStringLiteral("C:/Windows")))
+                                  .filePath(QStringLiteral("Fonts"));
+        if (QDir(fonts).exists())
+            qputenv("QT_QPA_FONTDIR", QDir::toNativeSeparators(fonts).toLocal8Bit());
+    }
+#endif
 }
 
 void spin(QApplication &app, int ms)
@@ -141,8 +217,11 @@ QStringList testDemos(QApplication &app)
         spin(app, 20);
         const bool ok = ERRORS.size() == before;
         out() << "  " << demo.first.leftJustified(18) << ' ' << (ok ? "ok" : "FAILED") << Qt::endl;
-        if (!ok)
+        if (!ok) {
             failed.append(demo.first);
+            for (int i = before; i < ERRORS.size(); ++i)
+                out() << "      -> " << ERRORS.at(i).trimmed().replace(QLatin1Char('\n'), QLatin1String("\n         ")) << Qt::endl;
+        }
     }
     return failed;
 }
@@ -186,19 +265,27 @@ int main(int argc, char *argv[])
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
+    if (qgetenv("QT_QPA_PLATFORM").startsWith("offscreen"))
+        provideFontsForOffscreen();
     qInstallMessageHandler(messageHandler);
     QApplication app(argc, argv);
+    const QStringList selfProblems = selfCheck();
     out() << "Qt version: " << qVersion() << Qt::endl;
     out() << "Widget demos:" << Qt::endl;
     const QStringList failed = testDemos(app);
     out() << "Designer plugins:" << Qt::endl;
     const QStringList problems = testDesignerPlugins();
-    for (const QString &e : ERRORS + problems) {
+    if (!NOTES.isEmpty()) {
+        out() << "Environment notes (not failures):" << Qt::endl;
+        for (const QString &n : std::as_const(NOTES))
+            out() << "  - " << n.trimmed().replace(QLatin1Char('\n'), QLatin1String("\n    ")) << Qt::endl;
+    }
+    for (const QString &e : selfProblems + problems) {
         out() << QString(70, QLatin1Char('-')) << Qt::endl;
         out() << e.trimmed() << Qt::endl;
     }
     const int total = int(demos().size());
     out() << "Result: " << (total - failed.size()) << '/' << total << " demos ok, " << problems.size()
-          << " plugin problem(s)" << Qt::endl;
-    return (!failed.isEmpty() || !problems.isEmpty() || !ERRORS.isEmpty()) ? 1 : 0;
+          << " plugin problem(s), " << NOTES.size() << " environment note(s)" << Qt::endl;
+    return (!failed.isEmpty() || !problems.isEmpty() || !ERRORS.isEmpty() || !selfProblems.isEmpty()) ? 1 : 0;
 }

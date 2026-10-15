@@ -277,6 +277,10 @@ Designer must be built with the same Qt version (and compiler) as the plugin.
 - `QLineEdit::cursorRect()` is protected in C++ (PyQt exposes it); Password Judge gets the same rectangle through
   `inputMethodQuery(Qt::ImCursorRectangle)`.
 - The logo generator sends a real mouse press to the hold button instead of calling the private `_press()`.
+- Monospaced text (Deadline Countdown digits, Chameleon hex label, Copy Blob chip) uses
+  `QFontDatabase::systemFont(QFontDatabase::FixedFont)` instead of the Python version's `QFont("Monospace")`: the
+  "Monospace" alias only exists with fontconfig (Linux), so elsewhere Qt fell back slowly and warned. On Linux both
+  resolve to the same font (verified pixel-identical); macOS and Windows now get their native monospace font.
 - `AntBreadcrumbWidget::CrumbState` values are `CarriedIn`, `Idle` and `CarriedOut` (Python: `IN`, `IDLE`, `OUT`),
   because `<windows.h>` defines `IN` and `OUT` as empty macros.
 - Known quirk kept from the original: `GooglyEyesWidget::setEyeCount()` only re-lays out the eyes on the next resize.
@@ -302,6 +306,11 @@ a suffix (`v1.1.0-rc1`) is published as a pre-release. No secrets are needed: th
 
 Notes:
 
+- The smoke test fails on any Qt warning, critical or fatal message from a demo, except messages about the test
+  machine itself (Qt's `qt.qpa.*` / `qt.text.font.*` logging categories and a few known font/platform messages,
+  e.g. missing font directories or font aliases). Those are printed as "environment notes", not hidden, and a
+  built-in self-check verifies that the filter still accepts known environment messages and still rejects real
+  problems. On Windows the test points the offscreen platform at `%WINDIR%\Fonts`, since Qt no longer ships fonts.
 - The ARM64 runners (`ubuntu-*-arm`, `windows-11-arm`) and the Intel macOS runner (`macos-15-intel`) are standard
   GitHub-hosted runners, free for public repositories. Private repositories pay per minute, and an organization may
   need to allow them.
