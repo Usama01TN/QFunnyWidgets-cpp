@@ -310,15 +310,25 @@ runs on a GitHub-hosted runner of its own architecture, so the smoke test really
 The packaging logic lives in `.github/scripts/package-<os>.sh`, so it can also be run locally after a
 `cmake --install` (see the variables at the top of each script).
 
-To publish a release:
+Publishing (the release job only runs after all 12 builds succeeded, and checks that all 24 packages exist):
 
-1. Set the version in `CMakeLists.txt` (`project(QFunnyWidgets VERSION x.y.z ...)`) and commit.
-2. Tag and push: `git tag vx.y.z && git push origin vx.y.z`.
+| How                                                        | What gets published                                                                 |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| Push a tag: `git tag vx.y.z && git push origin vx.y.z`     | Release `vx.y.z` (a suffix such as `-rc1` makes it a pre-release)                    |
+| Push to `main` / `master`                                  | The rolling **nightly** pre-release (tag `nightly`), replaced on every push          |
+| *Actions > Release > Run workflow*, publish = `release`    | Release `v<CMake version>`; the workflow creates the tag on the chosen branch        |
+| *Actions > Release > Run workflow*, publish = `nightly`    | The nightly pre-release, from the chosen branch                                      |
+| *Actions > Release > Run workflow*, publish = `none`       | Nothing (dry run): the packages are only attached to the run as artifacts            |
+| Pull request                                               | Nothing: build, smoke tests and packages only                                        |
 
-The workflow checks that the tag matches the CMake version, builds everything, checks that all 24 packages are
-there, then creates the GitHub release with the packages, `SHA256SUMS.txt` and generated release notes. A tag with
-a suffix (`v1.1.0-rc1`) is published as a pre-release. No secrets are needed: the release job uses the built-in
-`GITHUB_TOKEN`.
+- A version tag must match `project(QFunnyWidgets VERSION x.y.z ...)` in `CMakeLists.txt`; bump it (and commit)
+  before releasing a new version. A manual `release` run stops before building if its tag already exists, so it can
+  never overwrite a published release; re-running the workflow of an existing tag refreshes that release's files.
+- The nightly is never marked "Latest", so the repository's latest release stays the newest versioned one. Its
+  package names contain the commit (`1.0.0-dev.<sha>`).
+- Releases include the package overview, `SHA256SUMS.txt`, and (versioned releases) generated release notes.
+  No secrets are needed: publishing uses the built-in `GITHUB_TOKEN` through the `gh` CLI
+  (`.github/scripts/publish-release.sh`).
 
 Notes:
 
@@ -335,6 +345,20 @@ Notes:
 - Homebrew deprecated `qt@5` in May 2026; when Homebrew disables it, the macOS arm64 Qt 5 job will need another
   source of Qt 5 (or can be removed).
 
+## Support:
+
+If QFunnyWidgets is useful to you, feel free to support its development:
+
+<p>
+  <a href="https://ba9chich.com/fr/IninouUsama"><img src="https://img.shields.io/badge/ba9chich-Support%20me-E4002B?style=for-the-badge" alt="Support me on ba9chich"></a>
+  <a href="https://ko-fi.com/usamatn"><img src="https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Buy me a coffee on Ko-fi"></a>
+</p>
+
+- **ba9chich:** [ba9chich.com/fr/IninouUsama](https://ba9chich.com/fr/IninouUsama)
+- **Ko-fi:** [ko-fi.com/usamatn](https://ko-fi.com/usamatn)
+
+Thank you :)
+
 ## License:
 
-MIT, see [LICENSE.md](LICENSE.md). Original Python project by Usama01TN.
+MIT, see [LICENSE.md](LICENSE.md). Original Python project.
