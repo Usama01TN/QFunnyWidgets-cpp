@@ -15,13 +15,24 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 
 /**
  * Breadcrumbs carried by ants.
  */
-class AntBreadcrumbWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT AntBreadcrumbWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QStringList path READ getPath WRITE setPath NOTIFY pathChanged)
@@ -39,7 +50,15 @@ public:
     /** One crumb of the path. */
     struct Crumb
     {
-        explicit Crumb(const QString &text = QString(), qreal x = 0.0, int state = Idle, qreal delay = 0.0);
+        explicit Crumb(const QString &text = QString(), qreal x = 0.0, int state = Idle, qreal delay = 0.0)
+            : text(text), x(x), targetX(x), state(state), delay(delay)
+        {
+            // sum(ord(ch) for ch in text) or 7
+            quint32 sum = 0;
+            for (auto ch : text.toUcs4())
+                sum += quint32(ch);
+            seed = sum ? sum : 7;
+        }
         QString text;
         qreal x;
         qreal targetX;

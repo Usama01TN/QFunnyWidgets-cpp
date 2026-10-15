@@ -13,6 +13,17 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QPainterPath;
 class QTimer;
@@ -20,7 +31,7 @@ class QTimer;
 /**
  * Star rating with feelings.
  */
-class StarRatingWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT StarRatingWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(int rating READ getRating WRITE setRating NOTIFY ratingChanged)

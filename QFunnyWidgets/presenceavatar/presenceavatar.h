@@ -12,18 +12,29 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 
 /** Up to two initials of a name ("Ada Lovelace" -> "AL", "Plato" -> "PL", "" -> "?"). */
-QString initialsOf(const QString &name);
+QFUNNYWIDGETS_EXPORT QString initialsOf(const QString &name);
 /** A stable pastel colour derived from a name. */
-QColor colorOf(const QString &name);
+QFUNNYWIDGETS_EXPORT QColor colorOf(const QString &name);
 
 /**
  * Avatar with a presence mood.
  */
-class PresenceAvatarWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT PresenceAvatarWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QString name READ getName WRITE setName)

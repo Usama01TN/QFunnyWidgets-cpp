@@ -12,6 +12,17 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 class QVBoxLayout;
@@ -19,7 +30,7 @@ class QVBoxLayout;
 /**
  * The header bar with the cat.
  */
-class CatHeaderWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT CatHeaderWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(bool expanded READ isExpanded WRITE setExpanded)
@@ -108,7 +119,7 @@ private:
 /**
  * Collapsible section: a CatHeaderWidget plus an animated body holding the content widget.
  */
-class SleepyCatSectionWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT SleepyCatSectionWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(bool expanded READ isExpanded WRITE setExpanded NOTIFY toggled)

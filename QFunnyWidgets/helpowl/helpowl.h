@@ -10,12 +10,23 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QTimer;
 
 /**
  * The floating help bubble (a frameless tool-tip window with a tail).
  */
-class HelpBubble : public QWidget
+class QFUNNYWIDGETS_EXPORT HelpBubble : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QString title READ getTitle WRITE setTitle)
@@ -66,7 +77,7 @@ private:
 /**
  * The owl help icon.
  */
-class HelpOwlWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT HelpOwlWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QString helpText READ getHelpText WRITE setHelpText)

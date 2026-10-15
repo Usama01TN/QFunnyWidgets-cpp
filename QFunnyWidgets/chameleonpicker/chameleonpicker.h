@@ -15,13 +15,24 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 
 /**
  * Colour picker whose chameleon eats the colour you pick.
  */
-class ChameleonColorPickerWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT ChameleonColorPickerWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QColor color READ getColor WRITE setColor NOTIFY colorChanged)

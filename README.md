@@ -31,7 +31,8 @@ Plain Qt Widgets, nothing else.
 
 Every [GitHub release](https://github.com/Usama01TN/QFunnyWidgets/releases) has ready-made packages for Qt 5 and
 Qt 6 on every desktop architecture. Each build produces a **gallery** (self-contained, no Qt needed: try the widgets)
-and an **SDK** (static library, headers, CMake package, Designer plugin, `funnywidgets-designer`):
+and an **SDK** (headers, the **static** and the **shared** library, CMake package, Designer plugin,
+`funnywidgets-designer`):
 
 | OS      | Architecture         | Qt 6 (6.10.3)                  | Qt 5                                        | Gallery format |
 |---------|----------------------|--------------------------------|---------------------------------------------|----------------|
@@ -197,32 +198,47 @@ packaging/linux/                desktop entry for the AppImage
 | CMake option                       | Default | Meaning                                                              |
 |------------------------------------|---------|----------------------------------------------------------------------|
 | `QFW_QT_MAJOR`                     | empty   | `5` or `6` to force a Qt major version; empty = Qt 6 if found, else 5 |
+| `QFW_BUILD_STATIC`                 | `ON`    | the static library `QFunnyWidgets::Static`                           |
+| `QFW_BUILD_SHARED`                 | `ON`    | the shared library `QFunnyWidgets::Shared`                           |
 | `QFW_BUILD_DEMOS`                  | `ON`    | one `funnywidgets-<package>` demo per widget                         |
 | `QFW_BUILD_GALLERY`                | `ON`    | `funnywidgets-mainwindow`                                            |
 | `QFW_BUILD_TOOLS`                  | `ON`    | `funnywidgets-makelogos` and `funnywidgets-designer`                 |
-| `QFW_BUILD_TESTS`                  | `ON`    | `funnywidgets-smoke` (+ `ctest`)                                     |
+| `QFW_BUILD_TESTS`                  | `ON`    | `funnywidgets-smoke` (+ `-shared`), run with `ctest`                  |
 | `QFW_BUILD_DESIGNER_PLUGIN`        | `ON`    | `funnywidgetsplugin` (skipped automatically without Qt `UiPlugin`)   |
 
-The library target is `QFunnyWidgets` (alias `QFunnyWidgets::QFunnyWidgets`), a position-independent static library.
-To use it from your own CMake project:
+### Static and shared libraries:
+
+Both are built by default (each compiled on its own: the shared one exports its API, the static one exports
+nothing), and both are installed and included in every release SDK:
+
+| CMake target                   | Linux                          | macOS                          | Windows (MSVC)                                    | Windows (MSYS2 / MinGW)                              |
+|--------------------------------|--------------------------------|--------------------------------|---------------------------------------------------|------------------------------------------------------|
+| `QFunnyWidgets::Static`        | `lib/libQFunnyWidgetsStatic.a` | `lib/libQFunnyWidgetsStatic.a` | `lib/QFunnyWidgetsStatic.lib`                     | `lib/libQFunnyWidgetsStatic.a`                       |
+| `QFunnyWidgets::Shared`        | `lib/libQFunnyWidgets.so.1`    | `lib/libQFunnyWidgets.1.dylib` | `bin/QFunnyWidgets.dll` + `lib/QFunnyWidgets.lib` | `bin/libQFunnyWidgets.dll` + `lib/libQFunnyWidgets.dll.a` |
+
+`QFunnyWidgets::QFunnyWidgets` is the static library, or the shared one when you configure your project with
+`-DQFUNNYWIDGETS_USE_SHARED=ON` (or when only the shared library is installed).
+The static library has a different base name so that, on Windows, it cannot collide with the DLL's import library.
+With the shared library, deploy `QFunnyWidgets.dll` / `libQFunnyWidgets.so.1` / `libQFunnyWidgets.1.dylib` next to
+(or in the library path of) your application.
 
 ```cmake
+# From source:
 add_subdirectory(QFunnyWidgets)                 # this repository
-target_link_libraries(myapp PRIVATE QFunnyWidgets::QFunnyWidgets)
+target_link_libraries(myapp PRIVATE QFunnyWidgets::Static)     # or QFunnyWidgets::Shared
+
+# Or from an installed SDK (CMAKE_PREFIX_PATH=<sdk>):
+find_package(QFunnyWidgets REQUIRED)
+target_link_libraries(myapp PRIVATE QFunnyWidgets::Shared)     # or ::Static, or ::QFunnyWidgets
 ```
 
-Or install it and use `find_package`:
+To build and install yourself: `cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/opt/qfunnywidgets && cmake --build build
+&& cmake --install build` (add `-DQFW_BUILD_SHARED=OFF` or `-DQFW_BUILD_STATIC=OFF` to build only one flavour). The
+install also places the gallery in `bin/` and the Designer plugin in `lib/qt<N>/plugins/designer/`.
 
-```bash
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/opt/qfunnywidgets && cmake --build build && cmake --install build
-```
-
-```cmake
-find_package(QFunnyWidgets REQUIRED)             # with CMAKE_PREFIX_PATH=/opt/qfunnywidgets
-target_link_libraries(myapp PRIVATE QFunnyWidgets::QFunnyWidgets)
-```
-
-The install also places the gallery in `bin/` and the Designer plugin in `lib/qt<N>/plugins/designer/`.
+Without CMake, link the library file directly and, **for the shared library only**, define `QFUNNYWIDGETS_SHARED`
+when compiling your code (so the headers import the symbols on Windows). For the static library, or when you compile
+the widget sources into your project (copying `<package>/` folders or using `QFunnyWidgets.pri`), define nothing.
 
 Include either the aggregate header `#include "QFunnyWidgets.h"` or a single widget,
 `#include "jellyswitch/jellyswitch.h"`. With qmake, add `include(path/to/QFunnyWidgets.pri)` to your `.pro`.

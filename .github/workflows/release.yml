@@ -274,7 +274,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel 4
 
-      - name: Smoke test (every demo + the Designer plugin metadata)
+      - name: Smoke tests (every demo against the static and the shared library + Designer plugin metadata)
         run: ctest --test-dir build --build-config Release --output-on-failure
 
       - name: Check the Designer plugin was built
@@ -288,6 +288,21 @@ jobs:
 
       - name: Install into the staging prefix
         run: cmake --install build --config Release
+
+      - name: Check that both library flavours were installed
+        # Linux: libQFunnyWidgetsStatic.a + libQFunnyWidgets.so*   macOS: ... + libQFunnyWidgets*.dylib
+        # MSVC: QFunnyWidgetsStatic.lib + QFunnyWidgets.lib (import) + bin/QFunnyWidgets.dll
+        # MSYS2: libQFunnyWidgetsStatic.a + libQFunnyWidgets.dll.a (import) + bin/libQFunnyWidgets.dll
+        run: |
+          static=$(find "$STAGE/lib" -maxdepth 1 -type f \( -name 'libQFunnyWidgetsStatic.a' -o -name 'QFunnyWidgetsStatic.lib' \))
+          shared=$(find "$STAGE/lib" "$STAGE/bin" -maxdepth 1 \( -name 'libQFunnyWidgets.so*' -o -name 'libQFunnyWidgets*.dylib' \
+                     -o -name 'QFunnyWidgets.dll' -o -name 'libQFunnyWidgets.dll' \))
+          echo "static: $static"
+          echo "shared: $shared"
+          if [ -z "$static" ] || [ -z "$shared" ]; then
+            echo "::error::The SDK must contain both the static and the shared library"
+            exit 1
+          fi
 
       # ---------- Package ----------
       - name: Package
@@ -333,5 +348,14 @@ jobs:
           name: QFunnyWidgets ${{ needs.version.outputs.version }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+          body: |
+            **Packages** (one pair per OS / architecture / Qt version):
+            - `*-gallery.*`: the self-contained widget gallery (AppImage / zip / dmg); no Qt installation needed.
+            - `*-sdk.*`: everything to build against QFunnyWidgets with that Qt: headers, the **static** library
+              (`QFunnyWidgetsStatic`), the **shared** library (`QFunnyWidgets`: `.so` / `.dylib` / `.dll` + import
+              library), the CMake package (`find_package(QFunnyWidgets)` -> `QFunnyWidgets::Static`,
+              `QFunnyWidgets::Shared`), the Qt Designer plugin and `funnywidgets-designer`.
+
+            `SHA256SUMS.txt` lists the checksums. See the README for which Qt and compiler each SDK expects.
           fail_on_unmatched_files: true
           files: dist/*

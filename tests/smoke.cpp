@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QIcon>
 #include <QPair>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QTextStream>
 #include <QWidget>
@@ -250,7 +251,8 @@ QStringList testDesignerPlugins()
         const QString include = QDir(QStringLiteral(QFW_SOURCE_DIR)).filePath(info.includeFile());
         QFile header(include);
         if (!header.open(QIODevice::ReadOnly)
-            || !QString::fromUtf8(header.readAll()).contains(QStringLiteral("class %1 ").arg(info.className)))
+            || !QString::fromUtf8(header.readAll())
+                   .contains(QRegularExpression(QStringLiteral("\\bclass\\s+(\\w+\\s+)?%1\\b").arg(info.className))))
             problems.append(QStringLiteral("%1: includeFile %2 does not declare it").arg(info.className, info.includeFile()));
     }
     if (infos.size() != 33)

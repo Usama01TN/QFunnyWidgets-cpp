@@ -13,16 +13,27 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 
 /** "M:SS"-style formatting: "05:07", or "1:02:03" with hours. */
-QString formatTime(qreal seconds);
+QFUNNYWIDGETS_EXPORT QString formatTime(qreal seconds);
 
 /**
  * Countdown with a calendar that ends up "fine" in flames.
  */
-class DeadlineCountdownWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT DeadlineCountdownWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(int duration READ getDuration WRITE setDuration)

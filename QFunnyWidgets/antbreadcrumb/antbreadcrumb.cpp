@@ -140,16 +140,6 @@ private:
 
 } // namespace
 
-AntBreadcrumbWidget::Crumb::Crumb(const QString &text, qreal x, int state, qreal delay)
-    : text(text), x(x), targetX(x), state(state), delay(delay)
-{
-    // sum(ord(ch) for ch in text) or 7
-    quint32 sum = 0;
-    for (auto ch : text.toUcs4())
-        sum += quint32(ch);
-    seed = sum ? sum : 7;
-}
-
 QStringList AntBreadcrumbWidget::defaultPath()
 {
     return {QStringLiteral("Home"), QStringLiteral("Projects"), QStringLiteral("QFunnyWidgets")};

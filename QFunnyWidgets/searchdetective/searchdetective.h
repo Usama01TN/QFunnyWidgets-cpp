@@ -14,6 +14,17 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QLineEdit;
 class QPainter;
 class QTimer;
@@ -21,7 +32,7 @@ class QTimer;
 /**
  * The detective: painted face, magnifying glass, pipe smoke and a speech bubble.
  */
-class DetectiveFaceWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT DetectiveFaceWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(int state READ getState WRITE setState)
@@ -115,7 +126,7 @@ private:
  * Search line edit + detective. Emits searchRequested after a debounce; if a search function is set it is called
  * after a short "investigation" and its return value is reported as the result count.
  */
-class SearchDetectiveWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT SearchDetectiveWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QString text READ getText WRITE setText NOTIFY textChanged)

@@ -31,7 +31,19 @@ GALLERY="$WORK/$BASE-gallery"
 mkdir -p "$GALLERY"
 cp "$STAGE/bin/funnywidgets-mainwindow.exe" "$GALLERY/QFunnyWidgets.exe"
 WINDEPLOYQT="$(command -v "windeployqt-qt${QT_MAJOR}" || command -v "windeployqt${QT_MAJOR}" || command -v windeployqt)"
-"$WINDEPLOYQT" --release --no-translations --no-system-d3d-compiler --no-opengl-sw "$GALLERY/QFunnyWidgets.exe"
+deploy_args=(--release --no-translations --no-system-d3d-compiler --no-opengl-sw)
+# The widgets paint with QPainter only, so no OpenGL stack is needed. Qt 5 builds configured with dynamic OpenGL
+# (MSYS2, the official MSVC 5.15) also want to ship ANGLE (libGLESv2.dll); MSYS2 does not have it -> skip it.
+# (--no-angle is a Qt 5 option; Qt 6 dropped ANGLE.)
+if [ "$QT_MAJOR" = "5" ]; then
+    deploy_args+=(--no-angle)
+fi
+# MSYS2: windeployqt's MinGW runtime detection expects GCC's runtime; the import resolver below copies the
+# actual runtime DLLs (libc++, libunwind, ...) instead.
+if [ "$RUNTIME" = "mingw" ]; then
+    deploy_args+=(--no-compiler-runtime)
+fi
+"$WINDEPLOYQT" "${deploy_args[@]}" "$GALLERY/QFunnyWidgets.exe"
 
 if [ "$RUNTIME" = "msvc" ]; then
     # App-local MSVC runtime of the right architecture (System32 may hold another architecture's copy,

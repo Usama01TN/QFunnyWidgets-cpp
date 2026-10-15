@@ -13,6 +13,17 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QLineEdit;
 class QPainter;
 class QPushButton;
@@ -21,12 +32,12 @@ class QTimer;
 /**
  * Password strength: -1 = empty, 0 = terrible, 1 = weak, 2 = fair, 3 = good, 4 = strong.
  */
-int passwordStrength(const QString &text, int minLength = 8);
+QFUNNYWIDGETS_EXPORT int passwordStrength(const QString &text, int minLength = 8);
 
 /**
  * The judge: a painted face with a speech bubble and a strength meter.
  */
-class JudgeFaceWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT JudgeFaceWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(int strength READ getStrength WRITE setStrength)
@@ -104,7 +115,7 @@ private:
 /**
  * Password line edit + Show/Hide toggle + the judge.
  */
-class PasswordJudgeWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT PasswordJudgeWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(QString text READ getText WRITE setText NOTIFY textChanged)

@@ -12,13 +12,24 @@
 #include <QWidget>
 #include <functional>
 
+// Symbol export for the shared library build (empty for the static library, or when compiling the sources directly).
+#ifndef QFUNNYWIDGETS_EXPORT
+#  if defined(QFUNNYWIDGETS_BUILD_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_EXPORT
+#  elif defined(QFUNNYWIDGETS_SHARED)
+#    define QFUNNYWIDGETS_EXPORT Q_DECL_IMPORT
+#  else
+#    define QFUNNYWIDGETS_EXPORT
+#  endif
+#endif
+
 class QPainter;
 class QTimer;
 
 /**
  * Page indicator: a duck family on lily pads.
  */
-class DucklingPagerWidget : public QWidget
+class QFUNNYWIDGETS_EXPORT DucklingPagerWidget : public QWidget
 {
     Q_OBJECT
     Q_PROPERTY(int current READ getCurrent WRITE setCurrent NOTIFY currentChanged)
