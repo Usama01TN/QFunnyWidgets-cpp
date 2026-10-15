@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=QFunnyWidgets Gallery
+Comment=35 custom-painted, animated Qt widgets with a sense of humour
+Exec=funnywidgets-mainwindow
+Icon=qfunnywidgets
+Categories=Development;
+Terminal=false

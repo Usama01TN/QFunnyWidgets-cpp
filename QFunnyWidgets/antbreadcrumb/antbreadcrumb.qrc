@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/antbreadcrumb">
+        <file>logo.png</file>
+    </qresource>
+</RCC>

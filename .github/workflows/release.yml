@@ -1,0 +1,337 @@
+# Build, test, package and release QFunnyWidgets (C++) with Qt 5 and Qt 6 on every desktop OS and architecture.
+#
+#   push / pull request to main               -> build + smoke test + packages (downloadable as run artifacts)
+#   git tag v1.0.0 && git push origin v1.0.0  -> the same, then a GitHub release with every package attached
+#   Actions tab > Release > Run workflow      -> the same as a push (a dry run: no release is created)
+#
+# The tag must match project(QFunnyWidgets VERSION ...) in CMakeLists.txt. Tags with a suffix (v1.1.0-rc1) are
+# published as pre-releases.
+#
+# Build matrix (every job runs natively on a GitHub-hosted runner of its architecture, no emulation):
+#
+#   OS       Arch            Qt 6 (official, 6.10.3)        Qt 5
+#   Linux    x86_64          aqt, ubuntu-22.04              Ubuntu 5.15.3, ubuntu-22.04
+#   Linux    aarch64         aqt, ubuntu-24.04-arm          Ubuntu 5.15.3, ubuntu-22.04-arm
+#   Windows  x64             aqt MSVC, windows-2022         official 5.15.2 MSVC, windows-2022
+#   Windows  x86 (32-bit)    - (Qt 6 has no 32-bit Windows) official 5.15.2 MSVC, windows-2022
+#   Windows  arm64           aqt MSVC, windows-11-arm       MSYS2 CLANGARM64 5.15.19 (LLVM-MinGW), windows-11-arm
+#   macOS    arm64 + x86_64  aqt universal, macos-15        -
+#   macOS    arm64           (in the universal build)       Homebrew qt@5 5.15.17, macos-15
+#   macOS    x86_64          (in the universal build)       official 5.15.2, macos-15-intel
+#
+# Qt 5 was never released by The Qt Company for ARM64 on Windows/macOS/Linux, so those builds use the maintained
+# Qt 5.15 LTS builds of MSYS2, Homebrew and Ubuntu. Each job builds, runs the smoke test (every demo + the Designer
+# plugin metadata), installs, and packages:
+#   QFunnyWidgets-<version>-<os>-qt<N>-<arch>[-mingw]-sdk.(tar.gz|zip)   static library, headers, CMake package,
+#                                                                        Designer plugin, funnywidgets-designer
+#   QFunnyWidgets-<version>-<os>-qt<N>-<arch>[-mingw]-gallery.<ext>      self-contained gallery
+#                                                                        (.AppImage / .zip / .dmg)
+name: Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel a release; superseded branch / PR builds can go.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  QT6_VERSION: "6.10.3"   # >= 6.9: older Qt 6 links -framework AGL, which the macOS 26 SDK no longer has
+  QT5_VERSION: "5.15.2"   # official Qt 5 binaries (Windows x64/x86, macOS Intel)
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the project version (and check the tag on releases)
+        id: version
+        run: |
+          VERSION=$(sed -nE 's/^project\(QFunnyWidgets VERSION ([0-9][0-9.]*).*/\1/p' CMakeLists.txt)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read the version from CMakeLists.txt"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "${TAG%%-*}" != "$VERSION" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match the CMake project version ($VERSION)"
+              exit 1
+            fi
+            VERSION="$TAG"                       # keep a pre-release suffix such as -rc1 in file names
+          else
+            VERSION="$VERSION-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---------------- Linux ----------------
+          - name: Linux x86_64 (Qt 6)
+            os: ubuntu-22.04                     # oldest glibc the Qt 6 binaries allow = most portable AppImage
+            platform: linux
+            qt: "6"
+            arch: x86_64
+            source: aqt
+            aqt_host: linux
+            aqt_arch: linux_gcc_64
+          - name: Linux aarch64 (Qt 6)
+            os: ubuntu-24.04-arm                 # Qt's arm64 Linux binaries are built on Ubuntu 24.04
+            platform: linux
+            qt: "6"
+            arch: aarch64
+            source: aqt
+            aqt_host: linux_arm64
+            aqt_arch: linux_gcc_arm64
+          - name: Linux x86_64 (Qt 5)
+            os: ubuntu-22.04
+            platform: linux
+            qt: "5"
+            arch: x86_64
+            source: apt
+          - name: Linux aarch64 (Qt 5)
+            os: ubuntu-22.04-arm
+            platform: linux
+            qt: "5"
+            arch: aarch64
+            source: apt
+          # ---------------- Windows ----------------
+          - name: Windows x64 (Qt 6)
+            os: windows-2022
+            platform: windows
+            qt: "6"
+            arch: x64
+            source: aqt
+            aqt_host: windows
+            aqt_arch: win64_msvc2022_64
+            cmake_args: -A x64
+          - name: Windows arm64 (Qt 6)
+            os: windows-11-arm
+            platform: windows
+            qt: "6"
+            arch: arm64
+            source: aqt
+            aqt_host: windows_arm64
+            aqt_arch: win64_msvc2022_arm64
+            cmake_args: -A ARM64
+          - name: Windows x64 (Qt 5)
+            os: windows-2022
+            platform: windows
+            qt: "5"
+            arch: x64
+            source: aqt
+            aqt_host: windows
+            aqt_arch: win64_msvc2019_64
+            cmake_args: -A x64
+          - name: Windows x86 (Qt 5)
+            os: windows-2022
+            platform: windows
+            qt: "5"
+            arch: x86
+            source: aqt
+            aqt_host: windows
+            aqt_arch: win32_msvc2019
+            cmake_args: -A Win32
+          - name: Windows arm64 (Qt 5, MSYS2)
+            os: windows-11-arm
+            platform: windows
+            qt: "5"
+            arch: arm64
+            source: msys2
+            shell: msys2 {0}
+            runtime: mingw
+            flavor: mingw
+            cmake_args: -G Ninja
+          # ---------------- macOS ----------------
+          - name: macOS universal (Qt 6)
+            os: macos-15
+            platform: macos
+            qt: "6"
+            arch: universal
+            source: aqt
+            aqt_host: mac
+            aqt_arch: clang_64
+            cmake_args: -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"   # Qt 6's macOS binaries are universal
+          - name: macOS arm64 (Qt 5, Homebrew)
+            os: macos-15
+            platform: macos
+            qt: "5"
+            arch: arm64
+            source: brew
+          - name: macOS x86_64 (Qt 5)
+            os: macos-15-intel
+            platform: macos
+            qt: "5"
+            arch: x86_64
+            source: aqt
+            aqt_host: mac
+            aqt_arch: clang_64
+            # Qt 5.15.2's headers predate libc++ dropping std::unary_function in C++17 mode.
+            cmake_args: -DCMAKE_CXX_FLAGS=-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
+    defaults:
+      run:
+        shell: ${{ matrix.shell || 'bash' }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      QT_MAJOR: ${{ matrix.qt }}
+      ARCH: ${{ matrix.arch }}
+      RUNTIME: ${{ matrix.runtime || 'msvc' }}
+      FLAVOR: ${{ matrix.flavor }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- Qt ----------
+      - name: Install Linux build and packaging dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libegl1 libfontconfig1 libfreetype6 libdbus-1-3 \
+            libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xfixes0 libxcb-xkb1
+
+      - name: Install Qt ${{ matrix.qt == '6' && env.QT6_VERSION || env.QT5_VERSION }} (official binaries)
+        if: matrix.source == 'aqt'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ matrix.qt == '6' && env.QT6_VERSION || env.QT5_VERSION }}
+          host: ${{ matrix.aqt_host }}
+          target: desktop
+          arch: ${{ matrix.aqt_arch }}
+          cache: true
+
+      - name: Install Qt 5 (Ubuntu packages)
+        if: matrix.source == 'apt'
+        run: |
+          sudo apt-get install -y --no-install-recommends qtbase5-dev qtbase5-dev-tools qttools5-dev
+          echo "QMAKE=/usr/lib/qt5/bin/qmake" >> "$GITHUB_ENV"     # for linuxdeploy-plugin-qt
+
+      - name: Install Qt 5 (Homebrew)
+        if: matrix.source == 'brew'
+        run: |
+          brew install qt@5
+          prefix="$(brew --prefix qt@5)"
+          echo "CMAKE_PREFIX_PATH=$prefix" >> "$GITHUB_ENV"
+          echo "$prefix/bin" >> "$GITHUB_PATH"                      # macdeployqt
+
+      - name: Install Qt 5 (MSYS2 CLANGARM64)
+        if: matrix.source == 'msys2'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: p7zip
+          pacboy: >-
+            cc:p cmake:p ninja:p llvm:p qt5-base:p qt5-tools:p
+
+      - name: Make Qt 5.15.2 usable with current macOS SDKs
+        if: matrix.platform == 'macos' && matrix.source == 'aqt' && matrix.qt == '5'
+        # Qt 5.15.2's CMake files still reference the AGL framework, which recent SDKs no longer ship.
+        run: |
+          find "$QT_ROOT_DIR/lib/cmake" -name '*.cmake' -print0 |
+            xargs -0 sed -i '' -E 's#;?/System/Library/Frameworks/AGL\.framework(/Headers)?##g'
+
+      # ---------- Build ----------
+      - name: Set paths
+        # Forward slashes everywhere: a Windows workspace path (D:\a\...) would be read as escape sequences
+        # by CMake; D:/a/... works for CMake, Git Bash, MSYS2 and 7-Zip alike.
+        run: |
+          ws="$GITHUB_WORKSPACE"
+          if command -v cygpath > /dev/null; then ws=$(cygpath -m "$ws"); fi
+          echo "STAGE=$ws/stage" >> "$GITHUB_ENV"
+          echo "DIST=$ws/dist" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build ${{ matrix.cmake_args }}
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_INSTALL_PREFIX="$STAGE"
+          -DQFW_QT_MAJOR="$QT_MAJOR"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Smoke test (every demo + the Designer plugin metadata)
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Check the Designer plugin was built
+        run: |
+          plugin=$(find build/designer -maxdepth 1 -type f -name '*funnywidgetsplugin*' | head -n 1)
+          if [ -z "$plugin" ]; then
+            echo "::error::The Qt Designer plugin was not built (is the Qt UiPlugin module installed?)"
+            exit 1
+          fi
+          echo "Built $plugin"
+
+      - name: Install into the staging prefix
+        run: cmake --install build --config Release
+
+      # ---------- Package ----------
+      - name: Package
+        run: bash .github/scripts/package-${{ matrix.platform }}.sh   # bash: works even if git lost the +x bit
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.platform }}-qt${{ matrix.qt }}-${{ matrix.arch }}${{ matrix.flavor && format('-{0}', matrix.flavor) || '' }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    needs: [version, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download every package
+        uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          count=$(find . -maxdepth 1 -type f ! -name SHA256SUMS.txt | wc -l)
+          echo "$count packages"
+          if [ "$count" -ne 24 ]; then           # 12 builds x (SDK + gallery)
+            echo "::error::Expected 24 packages, found $count"
+            exit 1
+          fi
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: QFunnyWidgets ${{ needs.version.outputs.version }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: dist/*

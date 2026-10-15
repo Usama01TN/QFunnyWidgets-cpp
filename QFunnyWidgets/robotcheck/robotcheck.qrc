@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/robotcheck">
+        <file>logo.png</file>
+    </qresource>
+</RCC>

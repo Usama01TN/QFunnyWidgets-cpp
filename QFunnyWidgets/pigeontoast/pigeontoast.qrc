@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/pigeontoast">
+        <file>logo.png</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/pancakestepper">
+        <file>logo.png</file>
+    </qresource>
+</RCC>

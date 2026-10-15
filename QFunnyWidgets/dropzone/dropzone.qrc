@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/dropzone">
+        <file>logo.png</file>
+    </qresource>
+</RCC>

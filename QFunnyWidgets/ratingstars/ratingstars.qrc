@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/QFunnyWidgets/ratingstars">
+        <file>logo.png</file>
+    </qresource>
+</RCC>
